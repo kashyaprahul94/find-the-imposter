@@ -21,10 +21,21 @@ export const MAX_WORD_LENGTH = 24;
 export const ROOM_CODE_LENGTH = 5;
 
 /**
- * How long the round starter may be absent from presence before the reveal
- * button falls back to every remaining player.
+ * How long someone stays on the roster after their connection drops.
+ *
+ * A locked phone or an app switch suspends the page within seconds, killing the
+ * websocket — the OS gives a web page no way to avoid this. But a player whose
+ * screen went dark is still sitting at the table, so they're shown as "away"
+ * rather than removed, and are still dealt into new rounds.
  */
-export const STARTER_ABSENT_GRACE_MS = 5_000;
+export const AWAY_GRACE_MS = 120_000;
+
+/**
+ * How long the dealer must be gone before the reveal button falls back to
+ * everyone else. Comfortably longer than a glance at another app, so a locked
+ * phone mid-discussion doesn't hand the reveal away.
+ */
+export const DEALER_ABSENT_MS = 45_000;
 
 /**
  * Two `round-start` broadcasts landing inside this window are treated as a

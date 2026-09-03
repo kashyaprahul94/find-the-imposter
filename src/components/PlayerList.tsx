@@ -35,13 +35,22 @@ export default function PlayerList({
           return (
             <li key={p.key} className="flex items-center gap-2">
               <span className={isMe ? "text-cyan" : "text-ash"}>{isMe ? "▸" : "·"}</span>
-              <span className={`truncate ${isMe ? "text-cyan" : "text-bone"}`}>
+              <span
+                className={`truncate ${isMe ? "text-cyan" : "text-bone"} ${
+                  p.present ? "" : "opacity-45"
+                }`}
+              >
                 {p.name}
                 {isMe ? " (you)" : ""}
               </span>
               {dealerName && p.name === dealerName ? (
                 <span className="ml-auto shrink-0 font-display text-[8px] tracking-widest text-amber">
                   DEALER
+                </span>
+              ) : !p.present ? (
+                // Phone locked or switched apps. Still in the room, still dealt in.
+                <span className="ml-auto shrink-0 font-display text-[8px] tracking-widest text-ash/70">
+                  AWAY
                 </span>
               ) : null}
             </li>
@@ -51,6 +60,12 @@ export default function PlayerList({
           <li className="text-ash">Waiting for the channel…</li>
         ) : null}
       </ul>
+
+      {players.some((p) => !p.present) ? (
+        <p className="text-[15px] text-ash">
+          Away = screen locked or on another app. They&apos;re still dealt in.
+        </p>
+      ) : null}
 
       {players.length > MAX_PLAYERS ? (
         <p className="text-[16px] text-neon">

@@ -60,6 +60,7 @@ export default function RoomView({
     key: playerKey,
     name: displayName,
     joinedAt: Date.now(),
+    present: true,
   };
 
   const isDealer = round?.dealerKey === playerKey;

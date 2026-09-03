@@ -129,6 +129,7 @@ export default function RoundSetup({
           {candidates.map((c) => (
             <option key={c.key} value={c.key}>
               {c.name}
+              {c.present ? "" : " (away)"}
             </option>
           ))}
         </select>

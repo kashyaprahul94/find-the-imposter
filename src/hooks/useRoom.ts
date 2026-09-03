@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { dedupeName } from "@/lib/identity";
-import { STARTER_ABSENT_GRACE_MS } from "@/lib/constants";
+import { AWAY_GRACE_MS, DEALER_ABSENT_MS } from "@/lib/constants";
+import {
+  absorbPresence,
+  isDealerGone,
+  reconcileRoster,
+  toPlayers,
+  type Roster,
+} from "@/lib/roster";
 import {
   EVENT,
   type PendingDealer,
@@ -51,10 +58,38 @@ export function useRoom({
   const revealRef = useRef<Reveal | null>(null);
   const pendingRef = useRef<PendingDealer | null>(null);
   const playersRef = useRef<Player[]>([]);
+
+  /**
+   * Everyone we've seen in this room, whether or not their socket is currently
+   * up. Presence alone would evict a player the moment their phone locks.
+   */
+  const rosterRef = useRef<Roster>(new Map());
+  const presentKeysRef = useRef<Set<string>>(new Set());
   const nameRef = useRef(name);
   nameRef.current = name;
   const displayNameRef = useRef(name);
   displayNameRef.current = displayName;
+
+  /**
+   * Folds live presence into the roster and republishes it. Called on every
+   * presence sync and once a second, so "away" ages out on its own.
+   */
+  const rebuildRoster = useCallback(() => {
+    const now = Date.now();
+    const present = presentKeysRef.current;
+
+    reconcileRoster(rosterRef.current, present, now, AWAY_GRACE_MS);
+    const list = toPlayers(rosterRef.current, present);
+    playersRef.current = list;
+    setPlayers(list);
+
+    const currentRound = roundRef.current;
+    setDealerAbsent(
+      currentRound
+        ? isDealerGone(rosterRef.current, present, currentRound.dealerKey, now, DEALER_ABSENT_MS)
+        : false,
+    );
+  }, []);
 
   const applyRound = useCallback((incoming: Round) => {
     const current = roundRef.current;
@@ -113,13 +148,15 @@ export function useRoom({
     channel.on("presence", { event: "sync" }, () => {
       if (cancelled) return;
       const state = channel.presenceState<Player>();
-      const list = Object.values(state)
+      const online = Object.values(state)
         .flatMap((entries) => (entries.length ? [entries[0]] : []))
-        .filter((p) => typeof p.key === "string" && typeof p.name === "string")
-        .map((p) => ({ key: p.key, name: p.name, joinedAt: p.joinedAt }))
-        .sort((a, b) => a.joinedAt - b.joinedAt || a.key.localeCompare(b.key));
-      playersRef.current = list;
-      setPlayers(list);
+        .filter((p) => typeof p.key === "string" && typeof p.name === "string");
+
+      presentKeysRef.current = new Set(online.map((p) => p.key));
+      absorbPresence(rosterRef.current, online, Date.now());
+      rebuildRoster();
+
+      const list = playersRef.current;
 
       // Two friends both called "Sam" would make the reveal ("the imposter was
       // Sam") useless. Whoever arrived later yields and re-tracks as "Sam (2)";
@@ -220,21 +257,14 @@ export function useRoom({
       void supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [code, playerKey, applyRound, applyReveal, applyReset]);
+  }, [code, playerKey, applyRound, applyReveal, applyReset, rebuildRoster]);
 
-  // Reveal falls back to the room once the dealer has been gone a while.
+  // Presence only fires on change, so "away" and "gone" have to age out on a
+  // clock of their own.
   useEffect(() => {
-    if (!round) {
-      setDealerAbsent(false);
-      return;
-    }
-    if (players.some((p) => p.key === round.dealerKey)) {
-      setDealerAbsent(false);
-      return;
-    }
-    const timer = setTimeout(() => setDealerAbsent(true), STARTER_ABSENT_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [round, players]);
+    const timer = setInterval(rebuildRoster, 1000);
+    return () => clearInterval(timer);
+  }, [rebuildRoster]);
 
   const startRound = useCallback(
     async (next: Round) => {

@@ -96,6 +96,30 @@ Measured over 4000 simulated rounds with 4 players: 1017/986/989/1008, zero
 back-to-back repeats. History (and therefore the weighting) is read from the
 database on join, so a fresh device still weights correctly.
 
+## Presence vs. the roster — `src/lib/roster.ts`
+
+Locking a phone or switching apps suspends the page within seconds. Timers stop,
+the websocket heartbeat stops, and Supabase drops the player from presence.
+**No web page can prevent this** — iOS gives a suspended tab no execution.
+
+So presence is not the roster. `useRoom` keeps its own roster and folds presence
+into it:
+
+- Connected → `present: true`, `lastSeen` refreshed.
+- Dropped → kept as `present: false` ("AWAY" in the UI) for `AWAY_GRACE_MS`
+  (120s). **Still dealt into new rounds** — they're at the table, their screen
+  just went dark.
+- Absent past the grace → removed.
+- The dealer only loses the reveal after `DEALER_ABSENT_MS` (45s), longer than a
+  glance at another app but short enough that a closed tab doesn't strand a
+  round.
+
+`reconcileRoster` refreshes `lastSeen` for everyone connected, not just on
+presence events. Presence only fires on *change*, so without that a player
+sitting quietly connected for over the grace period carried a stale `lastSeen`
+and got evicted the instant their phone locked, with no grace at all. That bug
+was caught by `roster-test.ts`, not by reading the code.
+
 ## Locked decisions — do not re-litigate
 
 - **No audio, no vibration.** iOS has no Vibration API and won't play sound
@@ -177,8 +201,9 @@ seizure risk; don't remove that guard.
 ## Layout
 
 ```
-src/lib/         imposter (who draws), rooms (Supabase queries), session,
-                 types, roomCode, identity, constants, supabase
+src/lib/         imposter (who draws), roster (who's in the room), rooms
+                 (Supabase queries), session, types, roomCode, identity,
+                 constants, supabase
 src/hooks/       useRoom (all live state), useRoundHistory, useWakeLock
 src/components/  ui, RoomView, RoundSetup, WordCard, PlayerList,
                  HistoryPanel, SharePanel, RevealOverlay

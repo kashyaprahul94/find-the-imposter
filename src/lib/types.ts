@@ -3,6 +3,12 @@ export type Player = {
   key: string;
   name: string;
   joinedAt: number;
+  /**
+   * Connected right now. False means their phone locked or they switched apps —
+   * they're still in the room and still dealt in, just not reachable this
+   * second. See AWAY_GRACE_MS.
+   */
+  present: boolean;
 };
 
 /**
