@@ -11,131 +11,141 @@ import { lastUsedName, sanitizeName } from "@/lib/session";
 type Busy = "none" | "creating" | "joining";
 
 export default function Home() {
-  const router = useRouter();
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState<Busy>("none");
-  const [error, setError] = useState<string | null>(null);
+	const router = useRouter();
+	const [name, setName] = useState("");
+	const [code, setCode] = useState("");
+	const [busy, setBusy] = useState<Busy>("none");
+	const [error, setError] = useState<string | null>(null);
 
-  // Read after mount so the prerendered HTML and the first client render agree;
-  // localStorage doesn't exist during prerender.
-  useEffect(() => {
-    setName(lastUsedName());
-  }, []);
+	// Read after mount so the prerendered HTML and the first client render agree;
+	// localStorage doesn't exist during prerender.
+	useEffect(() => {
+		setName(lastUsedName());
+	}, []);
 
-  const cleanName = sanitizeName(name);
-  const named = cleanName.length > 0;
-  const codeReady = isValidRoomCode(normalizeRoomCode(code));
+	const cleanName = sanitizeName(name);
+	const named = cleanName.length > 0;
+	const codeReady = isValidRoomCode(normalizeRoomCode(code));
 
-  async function handleCreate() {
-    setBusy("creating");
-    setError(null);
-    try {
-      const newCode = await createRoom();
-      router.push(`/room/${newCode}?name=${encodeURIComponent(cleanName)}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the room.");
-      setBusy("none");
-    }
-  }
+	async function handleCreate() {
+		setBusy("creating");
+		setError(null);
+		try {
+			const newCode = await createRoom();
+			router.push(`/room/${newCode}?name=${encodeURIComponent(cleanName)}`);
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Could not create the room.",
+			);
+			setBusy("none");
+		}
+	}
 
-  async function handleJoin() {
-    const normalized = normalizeRoomCode(code);
-    if (!isValidRoomCode(normalized)) {
-      return setError(`Room codes are ${ROOM_CODE_LENGTH} characters — no O, I, 0 or 1.`);
-    }
-    setBusy("joining");
-    setError(null);
-    try {
-      if (!(await roomExists(normalized))) {
-        setError(`No room called ${normalized}. Check the code.`);
-        setBusy("none");
-        return;
-      }
-      router.push(`/room/${normalized}?name=${encodeURIComponent(cleanName)}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not reach the room.");
-      setBusy("none");
-    }
-  }
+	async function handleJoin() {
+		const normalized = normalizeRoomCode(code);
+		if (!isValidRoomCode(normalized)) {
+			return setError(
+				`Room codes are ${ROOM_CODE_LENGTH} characters — no O, I, 0 or 1.`,
+			);
+		}
+		setBusy("joining");
+		setError(null);
+		try {
+			if (!(await roomExists(normalized))) {
+				setError(`No room called ${normalized}. Check the code.`);
+				setBusy("none");
+				return;
+			}
+			router.push(`/room/${normalized}?name=${encodeURIComponent(cleanName)}`);
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Could not reach the room.",
+			);
+			setBusy("none");
+		}
+	}
 
-  return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-5 p-5">
-      <header className="space-y-2 text-center">
-        <Logo />
-        <p className="text-ash">Everyone gets a word. One of you doesn&apos;t.</p>
-      </header>
+	return (
+		<main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-5 p-5">
+			<header className="space-y-2 text-center">
+				<Logo />
+				<p className="text-ash">
+					Everyone gets a word. One of you doesn&apos;t.
+				</p>
+			</header>
 
-      {/* Identity first: it applies to both actions below, so it can't sit
+			{/* Identity first: it applies to both actions below, so it can't sit
           inside either one of them. */}
-      <Panel className="space-y-2">
-        <Field
-          label="Your name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={MAX_NAME_LENGTH}
-          placeholder="e.g. Rahul"
-          autoComplete="off"
-          autoCapitalize="words"
-          enterKeyHint="done"
-          hint="This is how everyone in the room sees you."
-        />
-      </Panel>
+			<Panel className="space-y-2">
+				<Field
+					label="Your name"
+					value={name}
+					onChange={(e) => setName(e.target.value)}
+					maxLength={MAX_NAME_LENGTH}
+					placeholder="e.g. John"
+					autoComplete="off"
+					autoCapitalize="words"
+					enterKeyHint="done"
+					hint="This is how everyone in the room sees you."
+				/>
+			</Panel>
 
-      <div aria-live="polite">
-        {!named ? (
-          <p className="text-center text-[17px] text-amber">
-            Enter your name to create or join a room.
-          </p>
-        ) : null}
-      </div>
+			<div aria-live="polite">
+				{!named ? (
+					<p className="text-center text-[17px] text-amber">
+						Enter your name to create or join a room.
+					</p>
+				) : null}
+			</div>
 
-      <Panel className="space-y-4">
-        <Button
-          tone="neon"
-          onClick={handleCreate}
-          disabled={!named || busy !== "none"}
-        >
-          {busy === "creating" ? "Opening room…" : "Create a room"}
-        </Button>
+			<Panel className="space-y-4">
+				<Button
+					tone="neon"
+					onClick={handleCreate}
+					disabled={!named || busy !== "none"}
+				>
+					{busy === "creating" ? "Opening room…" : "Create a room"}
+				</Button>
 
-        <div className="flex items-center gap-3 text-ash">
-          <span className="h-px flex-1 bg-edge" />
-          <span className="font-display text-[10px] tracking-widest">OR JOIN ONE</span>
-          <span className="h-px flex-1 bg-edge" />
-        </div>
+				<div className="flex items-center gap-3 text-ash">
+					<span className="h-px flex-1 bg-edge" />
+					<span className="font-display text-[10px] tracking-widest">
+						OR JOIN ONE
+					</span>
+					<span className="h-px flex-1 bg-edge" />
+				</div>
 
-        <Field
-          label="Room code"
-          value={code}
-          onChange={(e) => setCode(normalizeRoomCode(e.target.value))}
-          placeholder="ABC42"
-          inputMode="text"
-          autoComplete="off"
-          autoCapitalize="characters"
-          autoCorrect="off"
-          spellCheck={false}
-          enterKeyHint="go"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && named && codeReady) void handleJoin();
-          }}
-          className="text-center font-display text-base tracking-[0.4em]"
-        />
-        <Button
-          tone="cyan"
-          onClick={handleJoin}
-          disabled={!named || !codeReady || busy !== "none"}
-        >
-          {busy === "joining" ? "Joining…" : "Join room"}
-        </Button>
-      </Panel>
+				<Field
+					label="Room code"
+					value={code}
+					onChange={(e) => setCode(normalizeRoomCode(e.target.value))}
+					placeholder="ABC42"
+					inputMode="text"
+					autoComplete="off"
+					autoCapitalize="characters"
+					autoCorrect="off"
+					spellCheck={false}
+					enterKeyHint="go"
+					onKeyDown={(e) => {
+						if (e.key === "Enter" && named && codeReady) void handleJoin();
+					}}
+					className="text-center font-display text-base tracking-[0.4em]"
+				/>
+				<Button
+					tone="cyan"
+					onClick={handleJoin}
+					disabled={!named || !codeReady || busy !== "none"}
+				>
+					{busy === "joining" ? "Joining…" : "Join room"}
+				</Button>
+			</Panel>
 
-      {error ? <ErrorNote>{error}</ErrorNote> : null}
+			{error ? <ErrorNote>{error}</ErrorNote> : null}
 
-      <p className="text-center text-[15px] text-ash">
-        Scanning a QR code takes you straight to the room — it&apos;ll ask your name
-        there.
-      </p>
-    </main>
-  );
+			<p className="text-center text-[15px] text-ash">
+				Scanning a QR code takes you straight to the room — it&apos;ll ask your
+				name there.
+			</p>
+		</main>
+	);
 }
