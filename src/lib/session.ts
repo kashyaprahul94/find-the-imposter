@@ -1,17 +1,23 @@
+import { nanoid } from "nanoid";
+
 export { sanitizeName } from "./identity";
 
 /**
- * Per-room credentials. The token is the player's identity to the server, so it
- * is scoped to one room and never shared between them.
+ * Per-room identity, held in the browser.
  *
- * localStorage rather than sessionStorage: iOS Safari discards backgrounded
- * tabs, and a player who locks their phone mid-round must come back as the same
- * person or they lose their word.
+ * Scoped to one room rather than global: a stored entry means "this device has
+ * already joined *this* room", so a refresh rejoins silently, while a QR into a
+ * room you've never played always prompts. A single global name caused people
+ * to silently rejoin under a name from weeks ago.
+ *
+ * localStorage rather than sessionStorage because iOS Safari discards
+ * backgrounded tabs, and a player who locks their phone mid-round has to come
+ * back as the same person or they lose their word.
  */
-export type RoomSession = { token: string; playerKey: string; name: string };
+export type RoomSession = { playerKey: string; name: string };
 
 const roomKey = (code: string) => `imposter:room:${code}`;
-/** Only a convenience default for the next room's name field. */
+/** Only a default for the next room's name field. */
 const LAST_NAME_KEY = "imposter:lastName";
 
 function read(key: string): string | null {
@@ -35,16 +41,23 @@ export function loadSession(code: string): RoomSession | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<RoomSession>;
-    if (!parsed.token || !parsed.playerKey || !parsed.name) return null;
+    if (!parsed.playerKey || !parsed.name) return null;
     return parsed as RoomSession;
   } catch {
     return null;
   }
 }
 
-export function saveSession(code: string, session: RoomSession): void {
+/** Creates or updates this device's identity for one room. */
+export function startSession(code: string, name: string): RoomSession {
+  const existing = loadSession(code);
+  const session: RoomSession = {
+    playerKey: existing?.playerKey ?? nanoid(12),
+    name,
+  };
   write(roomKey(code), JSON.stringify(session));
-  write(LAST_NAME_KEY, session.name);
+  write(LAST_NAME_KEY, name);
+  return session;
 }
 
 export function clearSession(code: string): void {

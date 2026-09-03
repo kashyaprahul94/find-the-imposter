@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, ErrorNote, Field, Logo, Panel } from "@/components/ui";
-import { api } from "@/lib/api";
+import { roomExists } from "@/lib/rooms";
 import { MAX_NAME_LENGTH } from "@/lib/constants";
 import {
   clearSession,
   lastUsedName,
   loadSession,
   sanitizeName,
-  saveSession,
+  startSession,
   type RoomSession,
 } from "@/lib/session";
 import RoomView from "@/components/RoomView";
@@ -21,29 +21,11 @@ export default function RoomClient({ code }: { code: string }) {
   const [phase, setPhase] = useState<Phase>("checking");
   const [session, setSession] = useState<RoomSession | null>(null);
   const [draftName, setDraftName] = useState("");
-  const [joinError, setJoinError] = useState<string | null>(null);
-  const [joining, setJoining] = useState(false);
 
-  const join = useCallback(
-    async (name: string, existingToken: string | null) => {
-      setJoining(true);
-      setJoinError(null);
-      try {
-        const result = await api.join(code, name, existingToken);
-        const next: RoomSession = {
-          token: result.token,
-          playerKey: result.playerKey,
-          name: result.name,
-        };
-        saveSession(code, next);
-        setSession(next);
-        setPhase("playing");
-      } catch (err) {
-        setJoinError(err instanceof Error ? err.message : "Could not join.");
-        setPhase("naming");
-      } finally {
-        setJoining(false);
-      }
+  const enter = useCallback(
+    (name: string) => {
+      setSession(startSession(code, name));
+      setPhase("playing");
     },
     [code],
   );
@@ -57,25 +39,27 @@ export default function RoomClient({ code }: { code: string }) {
     const stored = loadSession(code);
     setDraftName(sanitizeName(fromHome ?? stored?.name ?? lastUsedName()));
 
-    api
-      .roomExists(code)
-      .then(async (exists) => {
+    // Strip the name out of the address bar once read. Otherwise a player who
+    // copies the URL from their browser hands the next person a link that
+    // silently joins under *their* name, arriving as "Rahul (2)".
+    if (fromHome !== null) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("name");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    }
+
+    roomExists(code)
+      .then((exists) => {
         if (cancelled) return;
         if (!exists) return setPhase("missing");
 
-        // A stored token means this device already belongs to this room —
-        // a refresh or an iOS tab restore, so rejoin silently.
-        if (stored) {
-          await join(stored.name, stored.token);
-          return;
-        }
-        // Arriving from our own home form is a deliberate action with a name
-        // already typed; anything else (a scanned QR, a pasted link) gets the
-        // prompt, so nobody silently joins under a name from weeks ago.
-        if (fromHome && sanitizeName(fromHome)) {
-          await join(sanitizeName(fromHome), null);
-          return;
-        }
+        // Already joined this room on this device — a refresh or an iOS tab
+        // restore. Go straight back in.
+        if (stored) return enter(stored.name);
+        // Coming from our own home form, where the name was just typed.
+        const passed = sanitizeName(fromHome ?? "");
+        if (passed) return enter(passed);
+        // A scanned QR or a pasted link: always ask.
         setPhase("naming");
       })
       .catch(() => {
@@ -85,11 +69,9 @@ export default function RoomClient({ code }: { code: string }) {
     return () => {
       cancelled = true;
     };
-  }, [code, join]);
+  }, [code, enter]);
 
-  const leave = useCallback(() => {
-    clearSession(code);
-  }, [code]);
+  const leave = useCallback(() => clearSession(code), [code]);
 
   if (phase === "checking") {
     return (
@@ -151,18 +133,14 @@ export default function RoomClient({ code }: { code: string }) {
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="go"
+            hint="This is how everyone in the room sees you."
             onKeyDown={(e) => {
-              if (e.key === "Enter" && clean && !joining) void join(clean, null);
+              if (e.key === "Enter" && clean) enter(clean);
             }}
           />
-          <Button
-            tone="neon"
-            disabled={!clean || joining}
-            onClick={() => void join(clean, null)}
-          >
-            {joining ? "Joining…" : "Join"}
+          <Button tone="neon" disabled={!clean} onClick={() => enter(clean)}>
+            Join
           </Button>
-          {joinError ? <ErrorNote>{joinError}</ErrorNote> : null}
           {!clean && draftName.length > 0 ? (
             <ErrorNote>Names need at least one real character.</ErrorNote>
           ) : null}

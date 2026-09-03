@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRoom } from "@/hooks/useRoom";
-import { useRoundState } from "@/hooks/useRoundState";
+import { useRoundHistory } from "@/hooks/useRoundHistory";
 import { useWakeLock } from "@/hooks/useWakeLock";
-import { api } from "@/lib/api";
+import { recordConcludedRound } from "@/lib/rooms";
 import type { RoomSession } from "@/lib/session";
+import type { Round } from "@/lib/types";
 import { Button, Logo, Panel } from "./ui";
 import HistoryPanel from "./HistoryPanel";
 import PlayerList from "./PlayerList";
@@ -24,26 +25,28 @@ export default function RoomView({
   session: RoomSession;
   onLeave: () => void;
 }) {
-  const { token, playerKey, name } = session;
-  const { round, history, refresh } = useRoundState(code, token);
+  const { playerKey, name } = session;
 
-  const onSignal = useCallback(() => {
-    void refresh();
-  }, [refresh]);
+  const {
+    status,
+    players,
+    round,
+    reveal,
+    pendingDealer,
+    dealerAbsent,
+    displayName,
+    startRound,
+    sendReveal,
+    resetRound,
+  } = useRoom({ code, playerKey, name });
 
-  const { status, players, broadcast } = useRoom({
-    code,
-    playerKey,
-    name,
-    onSignal,
-  });
+  const history = useRoundHistory({ code, round, reveal });
 
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [composing, setComposing] = useState(false);
 
-  const live = Boolean(round) && !round!.revealed;
-  const concluded = Boolean(round?.revealed);
+  const concluded = Boolean(round && reveal && reveal.roundId === round.roundId);
+  const live = Boolean(round) && !concluded;
 
   useWakeLock(live);
 
@@ -51,35 +54,43 @@ export default function RoomView({
   useEffect(() => {
     if (!round) return;
     setComposing(false);
-  }, [round?.roundKey, round]);
+  }, [round?.roundId, round]);
+
+  const me = players.find((p) => p.key === playerKey) ?? {
+    key: playerKey,
+    name: displayName,
+    joinedAt: Date.now(),
+  };
+
+  const isDealer = round?.dealerKey === playerKey;
+  const amImposter = round?.imposterKey === playerKey;
+  const sittingOut = round ? !round.participantKeys.includes(playerKey) : false;
+  const myWord = !round || sittingOut ? null : amImposter ? round.imposterWord : round.othersWord;
+  const canReveal = live && (isDealer || dealerAbsent);
+  const showOverlay = concluded && round && dismissed !== round.roundId;
+
+  async function handleDeal(next: Round) {
+    await startRound(next);
+  }
 
   async function handleReveal() {
     if (!round) return;
-    setBusy(true);
-    try {
-      await api.reveal(code, token, round.roundKey);
-      await broadcast({ kind: "revealed", roundKey: round.roundKey, byName: name });
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
+    // Broadcast first — the room sees the reveal immediately. The write is
+    // fire-and-forget, and only happens now: an unrevealed round never touches
+    // the database, so the table can't leak an answer that's still in play.
+    await sendReveal({ roundId: round.roundId });
+    void recordConcludedRound(code, round).catch(() => {});
   }
 
   async function handleBeginNewRound() {
     setComposing(true);
     if (!round) return;
-    setBusy(true);
-    try {
-      await api.clear(code, token, round.roundKey);
-      await broadcast({ kind: "cleared", roundKey: round.roundKey, byName: name });
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
+    await resetRound({ roundId: round.roundId, byKey: playerKey, byName: displayName });
   }
 
-  const showOverlay = concluded && round && dismissed !== round.roundKey;
   const showSetup = composing || (!round && history.length === 0);
+  const someoneElseDealing =
+    !round && pendingDealer !== null && pendingDealer.key !== playerKey;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 p-4 pb-10">
@@ -110,21 +121,7 @@ export default function RoomView({
 
       {live && round ? (
         <>
-          {round.isDealer ? (
-            <Panel className="space-y-2 text-center">
-              <p className="font-display text-[10px] tracking-widest text-amber">
-                YOU DEALT THIS ROUND
-              </p>
-              <p className="text-bone">
-                {round.words?.others}{" "}
-                <span className="text-ash">/</span>{" "}
-                <span className="text-neon">{round.words?.imposter}</span>
-              </p>
-              <p className="text-[16px] text-ash">
-                Even you don&apos;t know who drew which. You find out when you reveal.
-              </p>
-            </Panel>
-          ) : round.sittingOut ? (
+          {sittingOut ? (
             <Panel className="text-center">
               <p className="font-display text-[10px] tracking-widest text-amber">
                 ROUND IN PROGRESS
@@ -134,22 +131,32 @@ export default function RoomView({
                 next round.
               </p>
             </Panel>
-          ) : round.word ? (
-            <WordCard word={round.word} />
+          ) : myWord ? (
+            <WordCard word={myWord} />
           ) : null}
 
-          {!round.isDealer ? (
-            <Panel className="text-center">
-              <p className="text-ash">
-                Dealt by <span className="text-bone">{round.dealerName}</span>
+          <Panel className="space-y-1 text-center">
+            <p className="text-ash">
+              Dealt by <span className="text-bone">{round.dealerName}</span>
+            </p>
+            {isDealer ? (
+              <p className="text-[16px] text-amber">
+                You dealt — you know the word and can&apos;t be the imposter.
               </p>
-            </Panel>
-          ) : null}
+            ) : null}
+          </Panel>
 
-          {round.isDealer ? (
-            <Button tone="amber" onClick={handleReveal} disabled={busy}>
-              {busy ? "Revealing…" : "Reveal imposter"}
-            </Button>
+          {canReveal ? (
+            <div className="space-y-2">
+              <Button tone="amber" onClick={handleReveal}>
+                Reveal imposter
+              </Button>
+              {!isDealer && dealerAbsent ? (
+                <p className="text-center text-[16px] text-ash">
+                  {round.dealerName} left, so anyone can call it.
+                </p>
+              ) : null}
+            </div>
           ) : (
             <p className="text-center text-[16px] text-ash">
               {round.dealerName} calls the reveal.
@@ -167,16 +174,16 @@ export default function RoomView({
             {round.imposterName}
           </p>
           <p className="text-ash">
-            {round.words?.others} <span className="text-ash">/</span>{" "}
-            <span className="text-neon">{round.words?.imposter}</span>
+            {round.othersWord} <span className="text-ash">/</span>{" "}
+            <span className="text-neon">{round.imposterWord}</span>
           </p>
-          {dismissed === round.roundKey ? (
+          {dismissed === round.roundId ? (
             <Button tone="ghost" onClick={() => setDismissed(null)}>
               Show reveal again
             </Button>
           ) : null}
-          <Button tone="neon" onClick={handleBeginNewRound} disabled={busy}>
-            {busy ? "Clearing…" : "Begin new round"}
+          <Button tone="neon" onClick={handleBeginNewRound}>
+            Begin new round
           </Button>
           <p className="text-[16px] text-ash">
             Clears this round for everyone. Anyone can deal the next one.
@@ -186,16 +193,7 @@ export default function RoomView({
 
       {showSetup ? (
         <>
-          <RoundSetup
-            code={code}
-            token={token}
-            players={players}
-            mePlayerKey={playerKey}
-            onDealt={async (roundKey) => {
-              await broadcast({ kind: "dealt", roundKey, byName: name });
-              await refresh();
-            }}
-          />
+          <RoundSetup players={players} me={me} history={history} onDeal={handleDeal} />
           {composing ? (
             <Button tone="ghost" onClick={() => setComposing(false)}>
               Cancel
@@ -203,8 +201,6 @@ export default function RoomView({
           ) : null}
         </>
       ) : live ? (
-        // A round whose dealer has closed their tab can never be revealed, so
-        // everyone keeps a way to move the room on.
         <button
           type="button"
           onClick={() => setComposing(true)}
@@ -213,9 +209,16 @@ export default function RoomView({
           Replace this round
         </button>
       ) : concluded ? null : (
-        <Button tone="neon" onClick={() => setComposing(true)}>
-          Deal a round
-        </Button>
+        <div className="space-y-2">
+          {someoneElseDealing ? (
+            <p className="text-center text-[17px] text-cyan">
+              {pendingDealer.name} is dealing the next round…
+            </p>
+          ) : null}
+          <Button tone="neon" onClick={() => setComposing(true)}>
+            Deal a round
+          </Button>
+        </div>
       )}
 
       <HistoryPanel history={history} />
@@ -224,10 +227,10 @@ export default function RoomView({
 
       {showOverlay && round ? (
         <RevealOverlay
-          isImposter={round.youWereImposter}
-          imposterName={round.imposterName ?? "someone"}
-          imposterPresent={players.some((p) => p.name === round.imposterName)}
-          onDismiss={() => setDismissed(round.roundKey)}
+          isImposter={amImposter}
+          imposterName={round.imposterName}
+          imposterPresent={players.some((p) => p.key === round.imposterKey)}
+          onDismiss={() => setDismissed(round.roundId)}
         />
       ) : null}
     </main>
