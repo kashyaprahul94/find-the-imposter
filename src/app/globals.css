@@ -1,0 +1,187 @@
+@import "tailwindcss";
+
+@theme {
+  --color-void: #07060d;
+  --color-panel: #120f1f;
+  --color-edge: #2c2545;
+  --color-neon: #ff2d95;
+  --color-cyan: #22e0ff;
+  --color-amber: #ffcc38;
+  --color-ash: #8f86ad;
+  --color-bone: #ece8ff;
+
+  --font-display: var(--font-press-start), monospace;
+  --font-term: var(--font-vt323), "Courier New", monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-void);
+  color: var(--color-bone);
+  font-family: var(--font-term);
+  /* VT323 is drawn small; bump it so body copy stays legible on a phone. */
+  font-size: 20px;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+/* Inputs and buttons must never be under 16px on iOS or Safari zooms the page. */
+input,
+button,
+textarea {
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+/*
+ * CRT scanlines. Fixed, non-interactive, and cheap — a repeating gradient
+ * rather than an animated overlay, so it costs nothing on a mid-range phone.
+ */
+.crt::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.28) 3px,
+    rgba(0, 0, 0, 0.28) 4px
+  );
+  mix-blend-mode: multiply;
+}
+
+/* Vignette, sold separately from the scanlines so the reveal can drop it. */
+.crt::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.75) 100%);
+}
+
+.text-glow-neon {
+  text-shadow: 0 0 8px rgba(255, 45, 149, 0.75), 0 0 22px rgba(255, 45, 149, 0.35);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 8px rgba(34, 224, 255, 0.7), 0 0 22px rgba(34, 224, 255, 0.3);
+}
+
+/* Chunky arcade cabinet button: hard offset shadow, presses down on tap. */
+.btn-arcade {
+  position: relative;
+  border: 2px solid currentColor;
+  box-shadow: 4px 4px 0 0 currentColor;
+  transition: transform 90ms steps(2), box-shadow 90ms steps(2);
+}
+
+.btn-arcade:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 0 currentColor;
+}
+
+.btn-arcade:disabled {
+  opacity: 0.35;
+  box-shadow: 2px 2px 0 0 currentColor;
+}
+
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  94% {
+    opacity: 0.72;
+  }
+  96% {
+    opacity: 1;
+  }
+}
+
+.flicker {
+  animation: flicker 6s infinite steps(1);
+}
+
+/* --- Reveal ------------------------------------------------------------- */
+
+@keyframes strobe {
+  0%,
+  49% {
+    background-color: #ff0033;
+    color: #07060d;
+  }
+  50%,
+  100% {
+    background-color: #07060d;
+    color: #ff0033;
+  }
+}
+
+.strobe {
+  animation: strobe 240ms steps(1) 8;
+}
+
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.settle {
+  animation: settle 320ms ease-out both;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(-6px, 2px, 0);
+  }
+  75% {
+    transform: translate3d(6px, -2px, 0);
+  }
+}
+
+.shake {
+  animation: shake 120ms steps(2) 10;
+}
+
+/*
+ * Strobing is a genuine seizure risk and a nasty surprise for anyone who has
+ * asked their OS to calm animations down. Those users get a plain fade to the
+ * same end state — they still learn they're the imposter.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .strobe,
+  .shake,
+  .flicker {
+    animation: none !important;
+  }
+
+  .strobe {
+    background-color: #ff0033;
+    color: #07060d;
+  }
+
+  .settle {
+    animation-duration: 1ms;
+  }
+}
