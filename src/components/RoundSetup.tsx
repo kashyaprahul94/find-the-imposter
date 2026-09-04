@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, ErrorNote, Field, Panel } from "./ui";
 import {
+  DEFAULT_IMPOSTERS,
   DEGENERATE_PLAYER_COUNT,
   MAX_WORD_LENGTH,
   MIN_PLAYERS_TO_START,
 } from "@/lib/constants";
-import { chooseImposter } from "@/lib/imposter";
+import { chooseImposters, maxImposters } from "@/lib/imposter";
+import ImposterPicker from "./ImposterPicker";
 import type { ConcludedRound, Player, Round } from "@/lib/types";
-
-const RANDOM = "__random__";
 
 export default function RoundSetup({
   players,
@@ -20,26 +20,36 @@ export default function RoundSetup({
 }: {
   players: Player[];
   me: Player;
-  /** Newest first. Feeds the weighting so the same person doesn't keep drawing. */
+  /** Newest first. Feeds the weighting so the same people don't keep drawing. */
   history: ConcludedRound[];
   onDeal: (round: Round) => Promise<void>;
 }) {
   const [othersWord, setOthersWord] = useState("");
   const [imposterWord, setImposterWord] = useState("");
-  const [nominee, setNominee] = useState<string>(RANDOM);
+  /**
+   * What the stepper is set to. The count actually used is this or the number
+   * of people pinned, whichever is larger — pinning six people plainly means
+   * six imposters. Keeping them separate means clearing the selection drops
+   * back to what the stepper says, instead of leaving it stuck high.
+   */
+  const [steppedCount, setSteppedCount] = useState(DEFAULT_IMPOSTERS);
+  const [pinned, setPinned] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   // The dealer typed both words, so drawing them would hand them the answer.
-  const candidates = players.filter((p) => p.key !== me.key);
+  const candidates = useMemo(
+    () => players.filter((p) => p.key !== me.key),
+    [players, me.key],
+  );
   const tooFew = players.length < MIN_PLAYERS_TO_START;
-  const onlyOneCandidate = !tooFew && candidates.length === 1;
+  const max = maxImposters(candidates.length);
+  const count = Math.min(Math.max(steppedCount, pinned.length, 1), max);
 
   // Supabase presence takes a couple of seconds to converge — measured at
   // ~2.2s for three clients. Dealing inside that window silently leaves a
   // player who *is* in the room out of participantKeys, and they get told to
-  // sit out for no visible reason. Warn rather than block: the roster is
-  // usually long settled by the time anyone deals.
+  // sit out for no visible reason. Warn rather than block.
   const roster = players.map((p) => p.key).sort().join(",");
   const [settling, setSettling] = useState(false);
   useEffect(() => {
@@ -47,6 +57,23 @@ export default function RoundSetup({
     const timer = setTimeout(() => setSettling(false), 1500);
     return () => clearTimeout(timer);
   }, [roster]);
+
+  // People leave. Drop pins that no longer refer to anyone, and never let the
+  // count exceed who's actually available.
+  useEffect(() => {
+    const live = new Set(candidates.map((c) => c.key));
+    setPinned((prev) => {
+      const kept = prev.filter((k) => live.has(k));
+      return kept.length === prev.length ? prev : kept;
+    });
+    setSteppedCount((c) => Math.min(Math.max(1, c), maxImposters(candidates.length)));
+  }, [candidates]);
+
+  function togglePin(key: string) {
+    setPinned((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  }
 
   async function deal() {
     const a = othersWord.trim();
@@ -57,12 +84,15 @@ export default function RoundSetup({
       return setError("The two words must differ, or there's nothing to spot.");
     }
 
-    const pick = chooseImposter(
+    const pick = chooseImposters(
       candidates,
-      history.map((h) => h.imposterKey).filter(Boolean),
-      nominee === RANDOM ? null : nominee,
+      history.map((h) => h.imposterKeys),
+      count,
+      pinned,
     );
-    if (!pick) return setError("There's nobody else to be the imposter.");
+    if (!pick || pick.imposters.length === 0) {
+      return setError("There's nobody else to be the imposter.");
+    }
 
     setSending(true);
     setError(null);
@@ -71,8 +101,8 @@ export default function RoundSetup({
         roundId: crypto.randomUUID().slice(0, 10),
         dealerKey: me.key,
         dealerName: me.name,
-        imposterKey: pick.imposter.key,
-        imposterName: pick.imposter.name,
+        imposterKeys: pick.imposters.map((i) => i.key),
+        imposterNames: pick.imposters.map((i) => i.name),
         imposterWord: b,
         othersWord: a,
         participantKeys: players.map((p) => p.key),
@@ -81,13 +111,15 @@ export default function RoundSetup({
       });
       setOthersWord("");
       setImposterWord("");
-      setNominee(RANDOM);
+      setPinned([]);
     } catch {
       setError("Couldn't deal the round. Check your connection.");
     } finally {
       setSending(false);
     }
   }
+
+  const everyoneIsImposter = count >= candidates.length && candidates.length > 1;
 
   return (
     <Panel className="space-y-4">
@@ -104,7 +136,7 @@ export default function RoundSetup({
         spellCheck={false}
       />
       <Field
-        label="Word for the imposter"
+        label="Word for the imposters"
         value={imposterWord}
         onChange={(e) => setImposterWord(e.target.value)}
         maxLength={MAX_WORD_LENGTH}
@@ -114,33 +146,59 @@ export default function RoundSetup({
         spellCheck={false}
       />
 
-      <label className="block">
-        <span className="mb-1 block font-display text-[10px] tracking-widest text-ash uppercase">
-          Who&apos;s the imposter
+      <div className="space-y-2">
+        <span className="block font-display text-[10px] tracking-widest text-ash uppercase">
+          How many imposters
         </span>
-        <select
-          value={nominee}
-          onChange={(e) => setNominee(e.target.value)}
-          className="w-full appearance-none border-2 border-edge bg-panel px-3 py-3 text-bone outline-none focus:border-cyan"
-        >
-          <option value={RANDOM}>
-            Pick for me{onlyOneCandidate ? "" : " (favours whoever's waited longest)"}
-          </option>
-          {candidates.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.name}
-              {c.present ? "" : " (away)"}
-            </option>
-          ))}
-        </select>
-        <span className="mt-1 block text-[15px] text-ash">
-          {nominee === RANDOM
-            ? onlyOneCandidate
-              ? `Only ${candidates[0]?.name} can be it.`
-              : "Never the same person twice running."
-            : "You've named them, so only you know before the reveal."}
-        </span>
-      </label>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label="One fewer imposter"
+            onClick={() => setSteppedCount(Math.max(1, count - 1))}
+            disabled={count <= 1 || count <= pinned.length}
+            className="btn-arcade size-12 shrink-0 bg-cyan/10 font-display text-[13px] text-cyan disabled:opacity-35"
+          >
+            −
+          </button>
+          <span
+            aria-live="polite"
+            className="min-w-12 text-center font-display text-base text-bone"
+          >
+            {count}
+          </span>
+          <button
+            type="button"
+            aria-label="One more imposter"
+            onClick={() => setSteppedCount(Math.min(max, count + 1))}
+            disabled={count >= max}
+            className="btn-arcade size-12 shrink-0 bg-cyan/10 font-display text-[13px] text-cyan disabled:opacity-35"
+          >
+            +
+          </button>
+          <span className="text-[16px] text-ash">of {candidates.length}</span>
+        </div>
+        {everyoneIsImposter ? (
+          <p className="text-[16px] text-amber">
+            That&apos;s everyone but you — nobody left to find.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <ImposterPicker
+          candidates={candidates}
+          selected={pinned}
+          onToggle={togglePin}
+          onClear={() => setPinned([])}
+        />
+        <p className="text-[15px] text-ash">
+          {pinned.length === 0
+            ? "Nobody picked — the app chooses, favouring whoever's waited longest."
+            : pinned.length >= count
+              ? "You've named them all, so only you know before the reveal."
+              : `${pinned.length} named, ${count - pinned.length} drawn at random.`}
+        </p>
+      </div>
 
       <Button tone="neon" onClick={deal} disabled={sending || tooFew}>
         {sending ? "Dealing…" : "Deal"}

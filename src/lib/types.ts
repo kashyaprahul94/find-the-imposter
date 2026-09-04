@@ -14,22 +14,23 @@ export type Player = {
 /**
  * A dealt round, broadcast in full to the room.
  *
- * Every client receives the imposter's identity and filters locally. That is a
- * deliberate trade: it makes dealing and revealing feel instant, at the cost of
- * the answer being visible to anyone reading their own network traffic. The
+ * Every client receives the imposters' identities and filters locally. That is
+ * a deliberate trade: it makes dealing and revealing feel instant, at the cost
+ * of the answer being visible to anyone reading their own network traffic. The
  * room is a group of friends at one table; see CLAUDE.md.
  */
 export type Round = {
   roundId: string;
   dealerKey: string;
   dealerName: string;
-  imposterKey: string;
-  imposterName: string;
+  /** One or more. Everyone here gets `imposterWord`. */
+  imposterKeys: string[];
+  imposterNames: string[];
   imposterWord: string;
   othersWord: string;
   /** Who was dealt in. Anyone joining later sits the round out. */
   participantKeys: string[];
-  /** The dealer named the imposter instead of leaving it to chance. */
+  /** The dealer named at least one imposter instead of leaving it to chance. */
   nominated: boolean;
   startedAt: number;
 };
@@ -39,6 +40,12 @@ export type Reveal = { roundId: string };
 export type RoundResetPayload = {
   roundId: string;
   byKey: string;
+  byName: string;
+};
+
+/** Removing someone from the room. The room creator can't be a target. */
+export type KickPayload = {
+  targetKey: string;
   byName: string;
 };
 
@@ -54,13 +61,13 @@ export type StateSyncPayload = {
   pendingDealer: PendingDealer | null;
 };
 
-/** A round whose imposter is public. Only these are persisted and listed. */
+/** A round whose imposters are public. Only these are persisted and listed. */
 export type ConcludedRound = {
   roundId: string;
   othersWord: string;
   imposterWord: string;
-  imposterKey: string;
-  imposterName: string;
+  imposterKeys: string[];
+  imposterNames: string[];
   dealerName: string;
   startedAt: number;
 };
@@ -69,6 +76,7 @@ export const EVENT = {
   roundStart: "round-start",
   reveal: "reveal",
   roundReset: "round-reset",
+  kick: "kick",
   stateRequest: "state-request",
   stateSync: "state-sync",
 } as const;

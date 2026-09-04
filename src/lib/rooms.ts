@@ -10,10 +10,16 @@ const CREATE_ATTEMPTS = 5;
  * rounds are dealt over broadcast — so a failure costs a history row at worst.
  */
 
-export async function createRoom(): Promise<string> {
+export type RoomRecord = { code: string; creatorKey: string };
+
+/** The creator's key is written with the room, so "who opened this" survives a
+ * refresh and is the same on every device. */
+export async function createRoom(creatorKey: string): Promise<string> {
   for (let attempt = 0; attempt < CREATE_ATTEMPTS; attempt++) {
     const code = generateRoomCode();
-    const { error } = await supabase.from("rooms").insert({ code });
+    const { error } = await supabase
+      .from("rooms")
+      .insert({ code, creator_key: creatorKey });
 
     if (!error) return code;
     // 23505 = unique_violation, i.e. a code collision. Anything else is real.
@@ -22,15 +28,16 @@ export async function createRoom(): Promise<string> {
   throw new Error("Could not allocate a room code. Try again.");
 }
 
-export async function roomExists(code: string): Promise<boolean> {
+export async function fetchRoom(code: string): Promise<RoomRecord | null> {
   const { data, error } = await supabase
     .from("rooms")
-    .select("id")
+    .select("code, creator_key")
     .eq("code", code)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return data !== null;
+  if (!data) return null;
+  return { code: data.code as string, creatorKey: data.creator_key as string };
 }
 
 async function roomId(code: string): Promise<number | null> {
@@ -56,8 +63,8 @@ export async function recordConcludedRound(code: string, round: Round): Promise<
     round_key: round.roundId,
     others_word: round.othersWord,
     imposter_word: round.imposterWord,
-    imposter_key: round.imposterKey,
-    imposter_name: round.imposterName,
+    imposter_keys: round.imposterKeys,
+    imposter_names: round.imposterNames,
     dealer_name: round.dealerName,
     started_at: round.startedAt,
   });
@@ -73,7 +80,7 @@ export async function fetchHistory(code: string): Promise<ConcludedRound[]> {
   const { data, error } = await supabase
     .from("rounds")
     .select(
-      "round_key, others_word, imposter_word, imposter_key, imposter_name, dealer_name, started_at",
+      "round_key, others_word, imposter_word, imposter_keys, imposter_names, dealer_name, started_at",
     )
     .eq("room_id", id)
     .order("started_at", { ascending: false });
@@ -84,8 +91,8 @@ export async function fetchHistory(code: string): Promise<ConcludedRound[]> {
     roundId: r.round_key as string,
     othersWord: r.others_word as string,
     imposterWord: r.imposter_word as string,
-    imposterKey: r.imposter_key as string,
-    imposterName: r.imposter_name as string,
+    imposterKeys: (r.imposter_keys as string[]) ?? [],
+    imposterNames: (r.imposter_names as string[]) ?? [],
     dealerName: r.dealer_name as string,
     startedAt: Number(r.started_at),
   }));

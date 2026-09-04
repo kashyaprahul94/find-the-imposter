@@ -46,7 +46,9 @@ export default function HistoryPanel({ history }: { history: ConcludedRound[] })
               <span className="truncate text-neon">{entry.imposterWord}</span>
             </div>
             <p className="text-[16px] text-ash">
-              {entry.imposterName} was the imposter · dealt by {entry.dealerName}
+              {entry.imposterNames.join(", ")}{" "}
+              {entry.imposterNames.length > 1 ? "were the imposters" : "was the imposter"}{" "}
+              · dealt by {entry.dealerName}
             </p>
           </li>
         ))}

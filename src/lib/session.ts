@@ -48,11 +48,23 @@ export function loadSession(code: string): RoomSession | null {
   }
 }
 
+/**
+ * A key for a player who doesn't have one yet. Needed before the room exists
+ * when creating one, since the room row records its creator.
+ */
+export function newPlayerKey(): string {
+  return nanoid(12);
+}
+
 /** Creates or updates this device's identity for one room. */
-export function startSession(code: string, name: string): RoomSession {
+export function startSession(
+  code: string,
+  name: string,
+  playerKey?: string,
+): RoomSession {
   const existing = loadSession(code);
   const session: RoomSession = {
-    playerKey: existing?.playerKey ?? nanoid(12),
+    playerKey: playerKey ?? existing?.playerKey ?? newPlayerKey(),
     name,
   };
   write(roomKey(code), JSON.stringify(session));

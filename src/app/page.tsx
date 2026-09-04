@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ErrorNote, Field, Logo, Panel } from "@/components/ui";
-import { createRoom, roomExists } from "@/lib/rooms";
+import QrScanner from "@/components/QrScanner";
+import { createRoom, fetchRoom } from "@/lib/rooms";
 import { isValidRoomCode, normalizeRoomCode } from "@/lib/roomCode";
 import { MAX_NAME_LENGTH, ROOM_CODE_LENGTH } from "@/lib/constants";
-import { lastUsedName, sanitizeName } from "@/lib/session";
+import { lastUsedName, newPlayerKey, sanitizeName, startSession } from "@/lib/session";
 
 type Busy = "none" | "creating" | "joining";
 
@@ -16,6 +17,7 @@ export default function Home() {
 	const [code, setCode] = useState("");
 	const [busy, setBusy] = useState<Busy>("none");
 	const [error, setError] = useState<string | null>(null);
+	const [scanning, setScanning] = useState(false);
 
 	// Read after mount so the prerendered HTML and the first client render agree;
 	// localStorage doesn't exist during prerender.
@@ -31,12 +33,42 @@ export default function Home() {
 		setBusy("creating");
 		setError(null);
 		try {
-			const newCode = await createRoom();
-			router.push(`/room/${newCode}?name=${encodeURIComponent(cleanName)}`);
+			// The key is minted before the room so the row can record who opened
+			// it — that person is the one nobody can remove.
+			const key = newPlayerKey();
+			const newCode = await createRoom(key);
+			startSession(newCode, cleanName, key);
+			router.push(`/room/${newCode}`);
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Could not create the room.",
 			);
+			setBusy("none");
+		}
+	}
+
+	/**
+	 * A scanned code skips the name gate here — the room page will ask, exactly
+	 * as it does for someone who scanned with their phone's camera app.
+	 */
+	async function handleScanned(scanned: string) {
+		setScanning(false);
+		setCode(scanned);
+		setBusy("joining");
+		setError(null);
+		try {
+			if (!(await fetchRoom(scanned))) {
+				setError(`Scanned ${scanned}, but there's no room with that code.`);
+				setBusy("none");
+				return;
+			}
+			router.push(
+				cleanName
+					? `/room/${scanned}?name=${encodeURIComponent(cleanName)}`
+					: `/room/${scanned}`,
+			);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Could not reach the room.");
 			setBusy("none");
 		}
 	}
@@ -51,7 +83,7 @@ export default function Home() {
 		setBusy("joining");
 		setError(null);
 		try {
-			if (!(await roomExists(normalized))) {
+			if (!(await fetchRoom(normalized))) {
 				setError(`No room called ${normalized}. Check the code.`);
 				setBusy("none");
 				return;
@@ -138,14 +170,32 @@ export default function Home() {
 				>
 					{busy === "joining" ? "Joining…" : "Join room"}
 				</Button>
+
+				{/* Not gated on the name: scanning is the fastest path in, and the
+				    room page prompts for a name anyway. */}
+				<button
+					type="button"
+					onClick={() => {
+						setError(null);
+						setScanning(true);
+					}}
+					disabled={busy !== "none"}
+					className="min-h-12 w-full font-display text-[9px] tracking-wider text-cyan uppercase underline disabled:opacity-40"
+				>
+					Scan a QR code
+				</button>
 			</Panel>
 
 			{error ? <ErrorNote>{error}</ErrorNote> : null}
 
 			<p className="text-center text-[15px] text-ash">
-				Scanning a QR code takes you straight to the room — it&apos;ll ask your
-				name there.
+				Scanning takes you straight to the room — it&apos;ll ask your name
+				there.
 			</p>
+
+			{scanning ? (
+				<QrScanner onCode={handleScanned} onClose={() => setScanning(false)} />
+			) : null}
 		</main>
 	);
 }

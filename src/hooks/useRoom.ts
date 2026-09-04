@@ -14,6 +14,7 @@ import {
 } from "@/lib/roster";
 import {
   EVENT,
+  type KickPayload,
   type PendingDealer,
   type Player,
   type Reveal,
@@ -49,6 +50,8 @@ export function useRoom({
   const [dealerAbsent, setDealerAbsent] = useState(false);
   /** The name actually in use, after de-duplication against the room. */
   const [displayName, setDisplayName] = useState(name);
+  /** Set when someone removed us. The room view swaps to a dead end. */
+  const [removedBy, setRemovedBy] = useState<string | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const joinedAtRef = useRef(Date.now());
@@ -192,6 +195,20 @@ export function useRoom({
       applyReset(payload as RoundResetPayload),
     );
 
+    // Removing someone is cooperative — their own client acts on this. Among
+    // friends in one room that's enough; a determined player could ignore it.
+    channel.on("broadcast", { event: EVENT.kick }, ({ payload }) => {
+      const { targetKey, byName } = payload as KickPayload;
+      if (targetKey === playerKey) {
+        setRemovedBy(byName);
+        void supabase.removeChannel(channel);
+        return;
+      }
+      rosterRef.current.delete(targetKey);
+      presentKeysRef.current.delete(targetKey);
+      rebuildRoster();
+    });
+
     // Exactly one client answers a resync request: the dealer if present, else
     // the lowest key. Otherwise every phone in the room replies at once.
     channel.on("broadcast", { event: EVENT.stateRequest }, ({ payload }) => {
@@ -302,6 +319,17 @@ export function useRoom({
     [applyReset],
   );
 
+  const kickPlayer = useCallback(
+    async (targetKey: string) => {
+      await channelRef.current?.send({
+        type: "broadcast",
+        event: EVENT.kick,
+        payload: { targetKey, byName: displayNameRef.current } satisfies KickPayload,
+      });
+    },
+    [],
+  );
+
   return useMemo(
     () => ({
       status,
@@ -311,9 +339,11 @@ export function useRoom({
       pendingDealer,
       dealerAbsent,
       displayName,
+      removedBy,
       startRound,
       sendReveal,
       resetRound,
+      kickPlayer,
     }),
     [
       status,
@@ -323,9 +353,11 @@ export function useRoom({
       pendingDealer,
       dealerAbsent,
       displayName,
+      removedBy,
       startRound,
       sendReveal,
       resetRound,
+      kickPlayer,
     ],
   );
 }

@@ -1,11 +1,11 @@
 /**
- * Choosing who the imposter is.
+ * Choosing who the imposters are.
  *
  * A uniform random pick is "fair" in the statistical sense and feels terrible
  * in practice: with four candidates the same person comes up twice in a row a
  * quarter of the time, and a table reads that as the app being broken. So the
  * pick is deliberately *less* random than uniform — weighted towards whoever
- * has waited longest, and never the same person twice running.
+ * has waited longest, and never repeating the previous round's imposters.
  */
 
 export type Candidate = { key: string; name: string };
@@ -23,65 +23,82 @@ function randomIndex(n: number): number {
 }
 
 /**
- * How many rounds ago this player was the imposter.
- * `recent` is newest-first. Never been the imposter ⇒ Infinity.
+ * How many rounds ago this player was an imposter.
+ * `recentRounds` is newest-first, one entry per round. Never ⇒ Infinity.
  */
-function roundsSince(key: string, recent: string[]): number {
-  const idx = recent.indexOf(key);
+function roundsSince(key: string, recentRounds: string[][]): number {
+  const idx = recentRounds.findIndex((keys) => keys.includes(key));
   return idx === -1 ? Number.POSITIVE_INFINITY : idx;
 }
 
-export type Pick = {
-  imposter: Candidate;
-  /** True when the dealer named them rather than leaving it to chance. */
-  nominated: boolean;
-};
-
-/**
- * @param candidates everyone eligible (the dealer must already be excluded)
- * @param recentImposterKeys newest-first keys from this room's history
- * @param nominatedKey dealer's explicit override, if any
- */
-export function chooseImposter(
-  candidates: Candidate[],
-  recentImposterKeys: string[] = [],
-  nominatedKey?: string | null,
-): Pick | null {
-  if (candidates.length === 0) return null;
-
-  if (nominatedKey) {
-    const named = candidates.find((c) => c.key === nominatedKey);
-    if (named) return { imposter: named, nominated: true };
-    // Nominee has left the room; fall through to a random pick rather than
-    // failing the deal.
-  }
-
-  if (candidates.length === 1) {
-    return { imposter: candidates[0], nominated: false };
-  }
-
-  // Never back-to-back. Only enforced when dropping them still leaves a real
-  // choice — with two candidates, alternating would be perfectly predictable.
-  const lastImposter = recentImposterKeys[0];
-  const pool =
-    candidates.length >= 3 && lastImposter
-      ? candidates.filter((c) => c.key !== lastImposter)
-      : candidates;
-
-  // Weight by how long each has waited. Someone who has never been the
-  // imposter gets the maximum weight, so newcomers are picked early.
+/** One weighted draw, favouring whoever has waited longest. */
+function drawOne(pool: Candidate[], recentRounds: string[][]): Candidate {
   const maxWeight = pool.length + 1;
-  const weights = pool.map((c) => {
-    const since = roundsSince(c.key, recentImposterKeys);
-    return Math.min(since + 1, maxWeight);
-  });
-
+  const weights = pool.map((c) =>
+    Math.min(roundsSince(c.key, recentRounds) + 1, maxWeight),
+  );
   const total = weights.reduce((sum, w) => sum + w, 0);
-  // Draw a point in [0, total) at integer resolution, then walk the buckets.
+
   let ticket = randomIndex(total);
   for (let i = 0; i < pool.length; i++) {
     ticket -= weights[i];
-    if (ticket < 0) return { imposter: pool[i], nominated: false };
+    if (ticket < 0) return pool[i];
   }
-  return { imposter: pool[pool.length - 1], nominated: false };
+  return pool[pool.length - 1];
+}
+
+export type Pick = {
+  imposters: Candidate[];
+  /** At least one was named by the dealer rather than drawn. */
+  nominated: boolean;
+};
+
+/** The most imposters a round can have: everyone except the dealer. */
+export function maxImposters(candidateCount: number): number {
+  return Math.max(1, candidateCount);
+}
+
+/**
+ * @param candidates everyone eligible (the dealer must already be excluded)
+ * @param recentRounds newest-first, each entry a past round's imposter keys
+ * @param count how many imposters this round
+ * @param nominatedKeys players the dealer pinned; the rest are drawn
+ */
+export function chooseImposters(
+  candidates: Candidate[],
+  recentRounds: string[][] = [],
+  count = 1,
+  nominatedKeys: string[] = [],
+): Pick | null {
+  if (candidates.length === 0) return null;
+
+  const wanted = Math.min(Math.max(1, Math.floor(count)), candidates.length);
+
+  // Pinned players first. Anyone who has since left the room is dropped rather
+  // than failing the deal.
+  const pinned = nominatedKeys
+    .map((k) => candidates.find((c) => c.key === k))
+    .filter((c): c is Candidate => Boolean(c))
+    .slice(0, wanted);
+
+  const chosen = [...pinned];
+  const taken = new Set(chosen.map((c) => c.key));
+  let remaining = candidates.filter((c) => !taken.has(c.key));
+
+  if (chosen.length < wanted) {
+    // Never a straight repeat of last round — but only while that still leaves
+    // enough people to draw from, otherwise the choice would be forced.
+    const lastRound = new Set(recentRounds[0] ?? []);
+    const rested = remaining.filter((c) => !lastRound.has(c.key));
+    const needed = wanted - chosen.length;
+    if (candidates.length >= 3 && rested.length >= needed) remaining = rested;
+
+    while (chosen.length < wanted && remaining.length > 0) {
+      const drawn = drawOne(remaining, recentRounds);
+      chosen.push(drawn);
+      remaining = remaining.filter((c) => c.key !== drawn.key);
+    }
+  }
+
+  return { imposters: chosen, nominated: pinned.length > 0 };
 }

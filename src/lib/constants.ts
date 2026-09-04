@@ -1,5 +1,5 @@
 /** Hard cap on players in a room. Enforced in the UI only. */
-export const MAX_PLAYERS = 10;
+export const MAX_PLAYERS = 20;
 
 /**
  * The round starter is never eligible to be the imposter (they typed both
@@ -13,6 +13,9 @@ export const MIN_PLAYERS_TO_START = 2;
 
 /** Below this the round works but has no hidden information. */
 export const DEGENERATE_PLAYER_COUNT = 2;
+
+/** Imposters per round, before the dealer picks otherwise. */
+export const DEFAULT_IMPOSTERS = 1;
 
 export const MAX_NAME_LENGTH = 16;
 export const MAX_WORD_LENGTH = 24;

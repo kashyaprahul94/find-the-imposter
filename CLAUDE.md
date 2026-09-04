@@ -7,7 +7,7 @@ same room. Someone creates a room, others join by QR or code, rounds are dealt
 in real time — everyone sees the same word except the imposter. The dealer
 reveals with a full-screen strobe.
 
-Target: **~10 players max**, friends physically together, playing casually.
+Target: **~20 players max**, friends physically together, playing casually.
 
 ## Current state
 
@@ -51,15 +51,17 @@ hand out an answer that is still in play.
 `supabase/schema.sql` — **running it drops both tables.**
 
 ```
-rooms  (id, code unique, created_at)
+rooms  (id, code unique, creator_key, created_at)
 rounds (id, room_id→rooms on delete cascade, round_key, others_word,
-        imposter_word, imposter_key, imposter_name, dealer_name, started_at,
-        created_at, unique (room_id, round_key))
+        imposter_word, imposter_keys text[], imposter_names text[],
+        dealer_name, started_at, created_at, unique (room_id, round_key))
 ```
 
-`imposter_key` is a client-generated key, not a foreign key — there is no
-players table. It exists so imposter weighting still works on a device that
-joined late. The unique constraint makes two people racing to hit Reveal a
+`imposter_keys` are client-generated player keys, not foreign keys — there is
+no players table. They exist so imposter weighting still works on a device that
+joined late, and they are arrays because a round can have several imposters.
+`creator_key` is written when the room is opened and marks the one player
+nobody can remove. The unique constraint makes two people racing to hit Reveal a
 no-op rather than a duplicate row.
 
 RLS allows anon insert and select, with **no update or delete policies**, so
@@ -77,6 +79,7 @@ Channel `room:<CODE>`, with `broadcast: { self: true }` and
 | `round-start` | full `Round`, including `imposterKey` |
 | `reveal` | `{ roundId }` |
 | `round-reset` | `{ roundId, byKey, byName }` |
+| `kick` | `{ targetKey, byName }` — cooperative removal |
 | `state-request` / `state-sync` | reconnect resync |
 
 ## Imposter selection — `src/lib/imposter.ts`
@@ -89,8 +92,16 @@ deliberately **less** random than uniform:
   with two, excluding them would make it perfectly predictable.
 - Everyone else is weighted by rounds since they last drew; never-drawn players
   get maximum weight, so newcomers are picked early.
-- The dealer can **nominate** a specific player, overriding the draw. A nominee
-  who has left falls back to a random pick rather than failing the deal.
+- A round can have **several imposters** (1 to the whole candidate pool). The
+  no-repeat rule applies to the previous round's whole set, and relaxes when
+  excluding them would starve the pool.
+- The dealer can **nominate** specific players, overriding the draw. The picker
+  is collapsed behind a summary line — at twenty players an open list is ten
+  rows of chrome for a feature most rounds skip — and gains a filter box past
+  eight candidates. Pinning fewer than the count fills the rest at random. The
+  count is derived as `max(stepper, pinned)`, so clearing the selection drops
+  back instead of leaving it stuck high. A nominee who has left is dropped
+  rather than failing the deal.
 
 Measured over 4000 simulated rounds with 4 players: 1017/986/989/1008, zero
 back-to-back repeats. History (and therefore the weighting) is read from the
@@ -119,6 +130,18 @@ presence events. Presence only fires on *change*, so without that a player
 sitting quietly connected for over the grace period carried a stale `lastSeen`
 and got evicted the instant their phone locked, with no grace at all. That bug
 was caught by `roster-test.ts`, not by reading the code.
+
+## Removing players
+
+Any player can remove any other, except the room creator (`rooms.creator_key`,
+written when the room is opened). It takes two taps — the ✕ arms, a second
+confirms — because a misfire on a phone is one tap away otherwise.
+
+Removal is **cooperative**: the `kick` broadcast tells the target's own client
+to leave, and everyone else drops them from the roster. A player who ignored the
+message, or who rescans the QR, is back in. That is fine for friends at a table
+and is the same trust assumption the whole app rests on — don't "harden" it
+without being asked.
 
 ## Locked decisions — do not re-litigate
 

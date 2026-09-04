@@ -19,10 +19,13 @@ import WordCard from "./WordCard";
 export default function RoomView({
   code,
   session,
+  creatorKey,
   onLeave,
 }: {
   code: string;
   session: RoomSession;
+  /** Whoever opened the room. Nobody can remove them. */
+  creatorKey: string | null;
   onLeave: () => void;
 }) {
   const { playerKey, name } = session;
@@ -38,6 +41,8 @@ export default function RoomView({
     startRound,
     sendReveal,
     resetRound,
+    kickPlayer,
+    removedBy,
   } = useRoom({ code, playerKey, name });
 
   const history = useRoundHistory({ code, round, reveal });
@@ -64,7 +69,7 @@ export default function RoomView({
   };
 
   const isDealer = round?.dealerKey === playerKey;
-  const amImposter = round?.imposterKey === playerKey;
+  const amImposter = round?.imposterKeys.includes(playerKey) ?? false;
   const sittingOut = round ? !round.participantKeys.includes(playerKey) : false;
   const myWord = !round || sittingOut ? null : amImposter ? round.imposterWord : round.othersWord;
   const canReveal = live && (isDealer || dealerAbsent);
@@ -90,6 +95,26 @@ export default function RoomView({
   }
 
   const showSetup = composing || (!round && history.length === 0);
+
+  if (removedBy) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-4 p-5">
+        <Panel className="w-full space-y-4 text-center">
+          <p className="font-display text-[13px] text-neon text-glow-neon">
+            REMOVED
+          </p>
+          <p className="text-ash">
+            <span className="text-bone">{removedBy}</span> removed you from room{" "}
+            <span className="text-bone">{code}</span>. Ask them to send the QR code
+            again if that was a mistake.
+          </p>
+          <Link href="/" onClick={onLeave} className="block">
+            <Button tone="cyan">Back to start</Button>
+          </Link>
+        </Panel>
+      </main>
+    );
+  }
   const someoneElseDealing =
     !round && pendingDealer !== null && pendingDealer.key !== playerKey;
 
@@ -169,10 +194,10 @@ export default function RoomView({
       {concluded && round ? (
         <Panel className="space-y-3 text-center">
           <p className="font-display text-[10px] tracking-widest text-ash">
-            IMPOSTER WAS
+            {round.imposterNames.length > 1 ? "IMPOSTERS WERE" : "IMPOSTER WAS"}
           </p>
           <p className="font-display text-sm text-neon text-glow-neon">
-            {round.imposterName}
+            {round.imposterNames.join(" · ")}
           </p>
           <p className="text-ash">
             {round.othersWord} <span className="text-ash">/</span>{" "}
@@ -224,13 +249,21 @@ export default function RoomView({
 
       <HistoryPanel history={history} />
 
-      <PlayerList players={players} meKey={playerKey} dealerName={round?.dealerName} />
+      <PlayerList
+        players={players}
+        meKey={playerKey}
+        creatorKey={creatorKey}
+        dealerName={round?.dealerName}
+        onRemove={(key) => void kickPlayer(key)}
+      />
 
       {showOverlay && round ? (
         <RevealOverlay
           isImposter={amImposter}
-          imposterName={round.imposterName}
-          imposterPresent={players.some((p) => p.key === round.imposterKey)}
+          imposterNames={round.imposterNames}
+          missingNames={round.imposterKeys
+            .map((k, i) => (players.some((p) => p.key === k) ? null : round.imposterNames[i]))
+            .filter((n): n is string => Boolean(n))}
           onDismiss={() => setDismissed(round.roundId)}
         />
       ) : null}

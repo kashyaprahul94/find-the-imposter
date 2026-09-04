@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { MAX_PLAYERS } from "@/lib/constants";
 import type { Player } from "@/lib/types";
 import { Panel } from "./ui";
@@ -7,13 +8,22 @@ import { Panel } from "./ui";
 export default function PlayerList({
   players,
   meKey,
+  creatorKey,
   dealerName,
+  onRemove,
 }: {
   players: Player[];
   meKey: string;
-  /** Names are de-duplicated server-side, so matching on one is unambiguous. */
+  /** Whoever opened the room. Can't be removed. */
+  creatorKey: string | null;
+  /** Names are de-duplicated, so matching on one is unambiguous. */
   dealerName?: string;
+  onRemove: (key: string) => void;
 }) {
+  // Removing someone is one tap away from a misfire on a phone, so it takes
+  // two: the ✕ arms, a second tap confirms.
+  const [arming, setArming] = useState<string | null>(null);
+
   return (
     <Panel className="space-y-3">
       <div className="flex items-baseline justify-between">
@@ -32,6 +42,10 @@ export default function PlayerList({
       <ul className="space-y-1.5">
         {players.map((p) => {
           const isMe = p.key === meKey;
+          const isCreator = p.key === creatorKey;
+          const removable = !isMe && !isCreator;
+          const armed = arming === p.key;
+
           return (
             <li key={p.key} className="flex items-center gap-2">
               <span className={isMe ? "text-cyan" : "text-ash"}>{isMe ? "▸" : "·"}</span>
@@ -43,16 +57,46 @@ export default function PlayerList({
                 {p.name}
                 {isMe ? " (you)" : ""}
               </span>
-              {dealerName && p.name === dealerName ? (
-                <span className="ml-auto shrink-0 font-display text-[8px] tracking-widest text-amber">
-                  DEALER
-                </span>
-              ) : !p.present ? (
-                // Phone locked or switched apps. Still in the room, still dealt in.
-                <span className="ml-auto shrink-0 font-display text-[8px] tracking-widest text-ash/70">
-                  AWAY
-                </span>
-              ) : null}
+
+              <span className="ml-auto flex shrink-0 items-center gap-2">
+                {dealerName && p.name === dealerName ? (
+                  <span className="font-display text-[8px] tracking-widest text-amber">
+                    DEALER
+                  </span>
+                ) : null}
+                {isCreator ? (
+                  <span className="font-display text-[8px] tracking-widest text-cyan/70">
+                    HOST
+                  </span>
+                ) : null}
+                {!p.present ? (
+                  // Phone locked or on another app. Still dealt in.
+                  <span className="font-display text-[8px] tracking-widest text-ash/70">
+                    AWAY
+                  </span>
+                ) : null}
+
+                {removable ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (armed) {
+                        onRemove(p.key);
+                        setArming(null);
+                      } else {
+                        setArming(p.key);
+                      }
+                    }}
+                    onBlur={() => setArming((k) => (k === p.key ? null : k))}
+                    aria-label={armed ? `Confirm removing ${p.name}` : `Remove ${p.name}`}
+                    className={`min-h-9 px-2 font-display text-[8px] tracking-widest uppercase ${
+                      armed ? "bg-neon/20 text-neon" : "text-ash/60"
+                    }`}
+                  >
+                    {armed ? "Sure?" : "✕"}
+                  </button>
+                ) : null}
+              </span>
             </li>
           );
         })}

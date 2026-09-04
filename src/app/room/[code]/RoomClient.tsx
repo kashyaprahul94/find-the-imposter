@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, ErrorNote, Field, Logo, Panel } from "@/components/ui";
-import { roomExists } from "@/lib/rooms";
+import { fetchRoom } from "@/lib/rooms";
 import { MAX_NAME_LENGTH } from "@/lib/constants";
 import {
 	clearSession,
@@ -21,6 +21,7 @@ export default function RoomClient({ code }: { code: string }) {
 	const [phase, setPhase] = useState<Phase>("checking");
 	const [session, setSession] = useState<RoomSession | null>(null);
 	const [draftName, setDraftName] = useState("");
+	const [creatorKey, setCreatorKey] = useState<string | null>(null);
 
 	const enter = useCallback(
 		(name: string) => {
@@ -48,10 +49,11 @@ export default function RoomClient({ code }: { code: string }) {
 			window.history.replaceState(null, "", `${url.pathname}${url.search}`);
 		}
 
-		roomExists(code)
-			.then((exists) => {
+		fetchRoom(code)
+			.then((room) => {
 				if (cancelled) return;
-				if (!exists) return setPhase("missing");
+				if (!room) return setPhase("missing");
+				setCreatorKey(room.creatorKey);
 
 				// Already joined this room on this device — a refresh or an iOS tab
 				// restore. Go straight back in.
@@ -109,7 +111,14 @@ export default function RoomClient({ code }: { code: string }) {
 	}
 
 	if (phase === "playing" && session) {
-		return <RoomView code={code} session={session} onLeave={leave} />;
+		return (
+			<RoomView
+				code={code}
+				session={session}
+				creatorKey={creatorKey}
+				onLeave={leave}
+			/>
+		);
 	}
 
 	const clean = sanitizeName(draftName);
