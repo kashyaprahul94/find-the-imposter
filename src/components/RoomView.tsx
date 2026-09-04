@@ -14,6 +14,7 @@ import PlayerList from "./PlayerList";
 import RevealOverlay from "./RevealOverlay";
 import RoundSetup from "./RoundSetup";
 import SharePanel from "./SharePanel";
+import ThemeSwitcher from "./ThemeSwitcher";
 import WordCard from "./WordCard";
 
 export default function RoomView({
@@ -256,6 +257,10 @@ export default function RoomView({
         dealerName={round?.dealerName}
         onRemove={(key) => void kickPlayer(key)}
       />
+
+      <Panel>
+        <ThemeSwitcher compact />
+      </Panel>
 
       {showOverlay && round ? (
         <RevealOverlay

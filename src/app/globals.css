@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/*
+ * The token set. Every colour and face in the app resolves through these, so a
+ * theme is nothing but a block that redefines them — see the
+ * html[data-theme=...] rules further down.
+ *
+ * These values are the Arcade theme, which deliberately has no data-theme block
+ * of its own: selecting it simply matches nothing and falls through to here.
+ * Synthwave is the default the app boots with (DEFAULT_THEME in lib/theme.ts).
+ */
 @theme {
   --color-void: #07060d;
   --color-panel: #120f1f;
@@ -9,6 +18,9 @@
   --color-amber: #ffcc38;
   --color-ash: #8f86ad;
   --color-bone: #ece8ff;
+  /* The reveal flood and the text knocked out of it. */
+  --color-reveal: #ff0033;
+  --color-reveal-ink: #07060d;
 
   --font-display: var(--font-press-start), monospace;
   --font-term: var(--font-vt323), "Courier New", monospace;
@@ -16,6 +28,123 @@
 
 :root {
   color-scheme: dark;
+  /* Screen texture, swapped per theme. */
+  --texture: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.28) 3px,
+    rgba(0, 0, 0, 0.28) 4px
+  );
+  --texture-blend: multiply;
+  --texture-opacity: 1;
+  --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.75) 100%);
+  --body-size: 20px;
+  --btn-shadow: 4px 4px 0 0 currentColor;
+  --panel-radius: 0px;
+  --glow-neon: 0 0 8px rgba(255, 45, 149, 0.75), 0 0 22px rgba(255, 45, 149, 0.35);
+  --glow-cyan: 0 0 8px rgba(34, 224, 255, 0.7), 0 0 22px rgba(34, 224, 255, 0.3);
+}
+
+/* --- Green phosphor -------------------------------------------------------
+   One hue. Hierarchy comes from brightness, the way a monochrome monitor did,
+   so neon/cyan/amber all resolve to shades of the same green rather than to
+   different colours. */
+html[data-theme="phosphor"] {
+  --color-void: #050a06;
+  --color-panel: #0a140c;
+  --color-edge: #1c3a22;
+  --color-neon: #33ff66;
+  --color-cyan: #33ff66;
+  --color-amber: #9bffb8;
+  --color-ash: #3f8a55;
+  --color-bone: #b9ffcb;
+  --color-reveal: #33ff66;
+  --color-reveal-ink: #050a06;
+
+  /* Press Start 2P stays the display face: every display size in the app is
+     authored in px against its metrics, and swapping in a narrower font would
+     make the 8px tags illegible. The terminal character comes from the single
+     hue, the caret-style labels and the denser scanlines instead. */
+  --font-display: var(--font-press-start), monospace;
+  --font-term: var(--font-vt323), "Courier New", monospace;
+
+  --texture: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.42) 3px,
+    rgba(0, 0, 0, 0.42) 4px
+  );
+  --vignette: radial-gradient(ellipse at center, transparent 62%, rgba(0, 0, 0, 0.6) 100%);
+  --body-size: 21px;
+  --btn-shadow: none;
+  --glow-neon: 0 0 10px rgba(51, 255, 102, 0.55);
+  --glow-cyan: 0 0 10px rgba(51, 255, 102, 0.55);
+}
+
+/* --- Synthwave ------------------------------------------------------------ */
+html[data-theme="synth"] {
+  --color-void: #150b2b;
+  --color-panel: #221041;
+  --color-edge: #3d1f6b;
+  --color-neon: #ff2d95;
+  --color-cyan: #22e0ff;
+  --color-amber: #ffb347;
+  --color-ash: #9d8ac2;
+  --color-bone: #ffe9f7;
+  --color-reveal: #ff2d95;
+  --color-reveal-ink: #ffffff;
+
+  --font-display: var(--font-audiowide), sans-serif;
+  --font-term: var(--font-rajdhani), system-ui, sans-serif;
+
+  /* A grid horizon rising from the bottom instead of scanlines. */
+  --texture:
+    linear-gradient(to bottom, transparent 60%, rgba(255, 45, 149, 0.18) 100%),
+    repeating-linear-gradient(to right, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 34px);
+  --texture-blend: screen;
+  --texture-opacity: 0.9;
+  --vignette: radial-gradient(ellipse at 50% 120%, rgba(255, 179, 71, 0.18) 0%, transparent 55%);
+  --body-size: 19px;
+  --btn-shadow: 0 0 18px rgba(255, 45, 149, 0.35);
+  --panel-radius: 3px;
+  --glow-neon: 0 0 10px rgba(255, 45, 149, 0.8), 0 0 30px rgba(255, 45, 149, 0.4);
+  --glow-cyan: 0 0 10px rgba(34, 224, 255, 0.7), 0 0 30px rgba(34, 224, 255, 0.3);
+}
+
+/* --- Game Boy -------------------------------------------------------------
+   The only light theme: dark olive type on the LCD's pale green. Every accent
+   is a darker tone of the same four-colour palette, so there is no glow to
+   speak of and the reveal has to work by inversion alone. */
+html[data-theme="gameboy"] {
+  color-scheme: light;
+
+  --color-void: #9bbc0f;
+  --color-panel: #8bac0f;
+  --color-edge: #306230;
+  --color-neon: #0f380f;
+  --color-cyan: #0f380f;
+  --color-amber: #306230;
+  --color-ash: #37611f;
+  --color-bone: #0f380f;
+  --color-reveal: #0f380f;
+  --color-reveal-ink: #9bbc0f;
+
+  --font-display: var(--font-press-start), monospace;
+  --font-term: var(--font-vt323), "Courier New", monospace;
+
+  /* Dot matrix rather than scanlines: the pixel grid of an LCD, not a CRT. */
+  --texture:
+    repeating-linear-gradient(to bottom, rgba(15, 56, 15, 0.1) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(to right, rgba(15, 56, 15, 0.1) 0 1px, transparent 1px 3px);
+  --texture-blend: normal;
+  --texture-opacity: 0.9;
+  --vignette: radial-gradient(ellipse at center, transparent 70%, rgba(15, 56, 15, 0.22) 100%);
+  --body-size: 21px;
+  --btn-shadow: 3px 3px 0 0 currentColor;
+  --glow-neon: none;
+  --glow-cyan: none;
 }
 
 html,
@@ -23,8 +152,7 @@ body {
   background: var(--color-void);
   color: var(--color-bone);
   font-family: var(--font-term);
-  /* VT323 is drawn small; bump it so body copy stays legible on a phone. */
-  font-size: 20px;
+  font-size: var(--body-size);
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: none;
 }
@@ -32,65 +160,62 @@ body {
 /* Inputs and buttons must never be under 16px on iOS or Safari zooms the page. */
 input,
 button,
-textarea {
+textarea,
+select {
   font-family: inherit;
   font-size: 1rem;
 }
 
-/*
- * CRT scanlines. Fixed, non-interactive, and cheap — a repeating gradient
- * rather than an animated overlay, so it costs nothing on a mid-range phone.
- */
+/* Screen texture and vignette. Fixed, non-interactive, and cheap. */
 .crt::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 50;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0) 0px,
-    rgba(0, 0, 0, 0) 2px,
-    rgba(0, 0, 0, 0.28) 3px,
-    rgba(0, 0, 0, 0.28) 4px
-  );
-  mix-blend-mode: multiply;
+  background: var(--texture);
+  mix-blend-mode: var(--texture-blend);
+  opacity: var(--texture-opacity);
 }
 
-/* Vignette, sold separately from the scanlines so the reveal can drop it. */
 .crt::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 49;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.75) 100%);
+  background: var(--vignette);
 }
 
 .text-glow-neon {
-  text-shadow: 0 0 8px rgba(255, 45, 149, 0.75), 0 0 22px rgba(255, 45, 149, 0.35);
+  text-shadow: var(--glow-neon);
 }
 
 .text-glow-cyan {
-  text-shadow: 0 0 8px rgba(34, 224, 255, 0.7), 0 0 22px rgba(34, 224, 255, 0.3);
+  text-shadow: var(--glow-cyan);
 }
 
 /* Chunky arcade cabinet button: hard offset shadow, presses down on tap. */
 .btn-arcade {
   position: relative;
   border: 2px solid currentColor;
-  box-shadow: 4px 4px 0 0 currentColor;
+  border-radius: var(--panel-radius);
+  box-shadow: var(--btn-shadow);
   transition: transform 90ms steps(2), box-shadow 90ms steps(2);
 }
 
 .btn-arcade:active:not(:disabled) {
-  transform: translate(4px, 4px);
-  box-shadow: 0 0 0 0 currentColor;
+  transform: translate(3px, 3px);
+  box-shadow: none;
 }
 
 .btn-arcade:disabled {
   opacity: 0.35;
-  box-shadow: 2px 2px 0 0 currentColor;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
 }
 
 @keyframes flicker {
@@ -118,13 +243,13 @@ textarea {
 @keyframes strobe {
   0%,
   49% {
-    background-color: #ff0033;
-    color: #07060d;
+    background-color: var(--color-reveal);
+    color: var(--color-reveal-ink);
   }
   50%,
   100% {
-    background-color: #07060d;
-    color: #ff0033;
+    background-color: var(--color-reveal-ink);
+    color: var(--color-reveal);
   }
 }
 
@@ -166,8 +291,8 @@ textarea {
 
 /*
  * Strobing is a genuine seizure risk and a nasty surprise for anyone who has
- * asked their OS to calm animations down. Those users get a plain fade to the
- * same end state — they still learn they're the imposter.
+ * asked their OS to calm animations down. Those users get the static end state
+ * — they still learn they're the imposter.
  */
 @media (prefers-reduced-motion: reduce) {
   .strobe,
@@ -177,8 +302,8 @@ textarea {
   }
 
   .strobe {
-    background-color: #ff0033;
-    color: #07060d;
+    background-color: var(--color-reveal);
+    color: var(--color-reveal-ink);
   }
 
   .settle {

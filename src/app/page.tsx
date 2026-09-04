@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ErrorNote, Field, Logo, Panel } from "@/components/ui";
 import QrScanner from "@/components/QrScanner";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 import { createRoom, fetchRoom } from "@/lib/rooms";
 import { isValidRoomCode, normalizeRoomCode } from "@/lib/roomCode";
 import { MAX_NAME_LENGTH, ROOM_CODE_LENGTH } from "@/lib/constants";
@@ -187,6 +188,10 @@ export default function Home() {
 			</Panel>
 
 			{error ? <ErrorNote>{error}</ErrorNote> : null}
+
+			<Panel>
+				<ThemeSwitcher />
+			</Panel>
 
 			<p className="text-center text-[15px] text-ash">
 				Scanning takes you straight to the room — it&apos;ll ask your name

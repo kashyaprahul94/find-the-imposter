@@ -37,7 +37,7 @@ export default function RevealOverlay({
         role="alertdialog"
         aria-label="You are an imposter"
         className={`fixed inset-0 z-[60] flex flex-col items-center justify-center gap-8 p-6 text-center ${
-          strobing ? "strobe" : "bg-[#ff0033] text-void"
+          strobing ? "strobe" : "bg-reveal text-reveal-ink"
         }`}
       >
         <p
@@ -60,7 +60,7 @@ export default function RevealOverlay({
                 {imposterNames.length - 1 === 1 ? "" : "S"}
               </p>
             ) : null}
-            <Button tone="ghost" className="!text-void" onClick={onDismiss}>
+            <Button tone="ghost" className="!text-reveal-ink" onClick={onDismiss}>
               Dismiss
             </Button>
           </div>
