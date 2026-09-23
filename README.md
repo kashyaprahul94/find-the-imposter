@@ -130,9 +130,4 @@ places to look when round behaviour is wrong.
 npm run dev
 npm run build
 npm run typecheck
-
-# Safe to run while a dev server is up. Two Next processes must never share one
-# .next directory — they serve each other half-written chunks, and the symptom
-# is a room that provably exists reporting "was never created".
-NEXT_DIST_DIR=.next-verify npx next build
 ```

@@ -173,8 +173,8 @@ without being asked.
 - **Never run two Next processes against the same `.next`.** A second dev server
   or a `next build` while `next dev` runs serves the browser chunks from another
   compilation — the symptom is a room that provably exists reporting "was never
-  created". `next.config.ts` reads `NEXT_DIST_DIR`; use
-  `NEXT_DIST_DIR=.next-verify` for any verification build or second server.
+  created". There is one build directory, so stop the dev server before
+  building, or check against the running one.
 - **`supabase-js` only maintains `presenceState()` if a presence listener is
   bound.** Without `channel.on("presence", …)`, `track()` returns `"ok"` and
   presence stays silently empty forever, with no error.
@@ -186,8 +186,8 @@ without being asked.
   15.5's config loader dies with
   `Cannot read properties of undefined (reading 'fileExists')`.
 - **Deleting routes leaves stale generated types.** `tsc` fails on
-  `.next*/types/**` referencing files that no longer exist. `rm -rf .next
-  .next-verify` and re-run.
+  `.next/types/**` referencing files that no longer exist. `rm -rf .next` and
+  re-run.
 - **RLS returns zero rows on select rather than an error** when a policy denies
   it (and `42501` on write). To prove a table is protected, count rows with a
   privileged key and compare — don't assert on a select error.
@@ -243,6 +243,5 @@ look when round behaviour is wrong.
 ```bash
 npm run dev
 npm run dev -- -H 0.0.0.0                 # real phones over LAN
-NEXT_DIST_DIR=.next-verify npx next build # safe while a dev server runs
 npm run typecheck
 ```
